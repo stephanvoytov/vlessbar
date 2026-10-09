@@ -174,7 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for s in cachedServers {
                 let it = NSMenuItem(title: s.name, action: #selector(serverPicked(_:)), keyEquivalent: "")
                 it.target = self
-                it.representedValue = s.idx
+                it.representedObject = NSNumber(value: s.idx)
                 it.state = (s.name == stateName) ? .on : .off
                 it.isEnabled = !busy
                 sub.addItem(it)
@@ -258,8 +258,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func serverPicked(_ sender: NSMenuItem) {
-        guard !busy, let idx = sender.representedValue as? Int else { return }
-        runAction(["set", "\(idx)"], successMessage: "Сервер выбран")
+        guard !busy, let num = sender.representedObject as? NSNumber else { return }
+        runAction(["set", "\(num.intValue)"], successMessage: "Сервер выбран")
     }
 
     @objc func subUpdateTapped() {
