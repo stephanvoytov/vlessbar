@@ -29,6 +29,19 @@ jobs:
           chmod +x build-macos.sh
           GO=go ./build-macos.sh
 
+      - name: Smoke test (execute the shipped x86_64 binaries)
+        continue-on-error: true
+        run: |
+          set -x
+          eng=dist/VLessBar.app/Contents/MacOS/VLessBar
+          xr=dist/VLessBar.app/Contents/Resources/xray
+          file "$eng" "$xr"
+          /usr/bin/otool -l "$eng" | grep -A3 LC_BUILD_VERSION || true
+          sudo softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || true
+          echo "--- engine version ---"; arch -x86_64 "$eng" version
+          echo "--- engine hwid ---";    arch -x86_64 "$eng" hwid
+          echo "--- xray version ---";   arch -x86_64 "$xr" version | head -3
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
