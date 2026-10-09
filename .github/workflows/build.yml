@@ -24,6 +24,23 @@ jobs:
       - name: Test engine
         run: cd engine && go test ./...
 
+      - name: Debug AppleScript compile
+        if: always()
+        run: |
+          set +e
+          echo "=== full file ==="
+          osacompile -o /tmp/full.scpt app/ui.applescript; echo "full rc=$?"
+          echo "=== on run block (lines 1-25) ==="
+          sed -n '1,25p' app/ui.applescript > /tmp/run.applescript
+          osacompile -o /tmp/run.scpt /tmp/run.applescript; echo "run rc=$?"
+          echo "=== installApp handler ==="
+          awk '/^on installApp/,/^end installApp/' app/ui.applescript > /tmp/inst.applescript
+          cat -n /tmp/inst.applescript
+          osacompile -o /tmp/inst.scpt /tmp/inst.applescript; echo "inst rc=$?"
+          echo "=== askButtons handler + call ==="
+          printf 'on askButtons(a, b, c)\n\treturn a\nend askButtons\nset dlg to my askButtons("x", {"a","b"}, 2)\n' > /tmp/ask.applescript
+          osacompile -o /tmp/ask.scpt /tmp/ask.applescript; echo "ask rc=$?"
+
       - name: Validate AppleScript UI compiles
         run: osacompile -o "$RUNNER_TEMP/ui.scpt" app/ui.applescript && echo "UI AppleScript compiles OK"
 
