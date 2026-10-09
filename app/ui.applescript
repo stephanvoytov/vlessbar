@@ -1,40 +1,41 @@
 -- VLessBar UI
 -- Launched by the engine binary with args: ResourcesDir, EnginePath, BundlePath
--- Simple white/simple workflow: install, connect, disconnect, switch server.
+--
+-- All dialogs go through System Events so they reliably come to the front
+-- (dialogs shown by a background osascript process are often invisible).
+-- The whole flow is wrapped so a failure shows a message instead of nothing.
 
 property resPath : ""
 property engPath : ""
 
 on run argv
+	if (count of argv) < 2 then error "usage: ui.applescript <resources> <engine> [bundle]"
 	set resPath to item 1 of argv
 	set engPath to item 2 of argv
+	set bundlePath to ""
 	try
 		set bundlePath to item 3 of argv
-	on error
-		set bundlePath to ""
 	end try
+	try
+		my runMain(bundlePath)
+	on error errMsg number errNum
+		if errNum is not -128 then my notifyError("Ошибка интерфейса: " & errMsg)
+	end try
+end run
 
-	-- Offer to self-install (unless already installed).
+on runMain(bundlePath)
 	set homeDir to do shell script "echo $HOME"
 	set installedSystem to "/Applications/VLessBar.app"
 	set installedUser to homeDir & "/Applications/VLessBar.app"
+
+	-- Offer to self-install (unless already installed / user said "later").
 	if bundlePath is not "" and bundlePath is not installedSystem and bundlePath is not installedUser then
 		set marker to homeDir & "/.vlessbar/.noinstall"
 		set noflag to do shell script "test -e " & quoted form of marker & " && echo 1 || echo 0"
 		if noflag is "0" then
-			set dlg to display dialog "Установить VLessBar в «Программы»?" with title "VLessBar" buttons {"Позже", "Установить"} default button 2
+			set dlg to my ask("Установить VLessBar в «Программы»?", {"Позже", "Установить"}, 2)
 			if button returned of dlg is "Установить" then
-				set dest to installedSystem
-				try
-					do shell script "/usr/bin/ditto " & quoted form of bundlePath & " " & quoted form of installedSystem with administrator privileges
-				on error
-					-- no admin rights: install into the user's own Applications folder
-					set dest to installedUser
-					do shell script "/bin/mkdir -p " & quoted form of (homeDir & "/Applications")
-					do shell script "/usr/bin/ditto " & quoted form of bundlePath & " " & quoted form of dest
-				end try
-				do shell script "/usr/bin/xattr -dr com.apple.quarantine " & quoted form of dest
-				do shell script "/usr/bin/open " & quoted form of dest
+				my installApp(bundlePath, homeDir, installedSystem, installedUser)
 				return
 			else
 				do shell script "/bin/mkdir -p " & quoted form of (homeDir & "/.vlessbar") & " && /usr/bin/touch " & quoted form of marker
@@ -42,31 +43,53 @@ on run argv
 		end if
 	end if
 
+	my menuLoop()
+end runMain
+
+on installApp(bundlePath, homeDir, installedSystem, installedUser)
+	set dest to installedSystem
+	try
+		do shell script "/usr/bin/ditto " & quoted form of bundlePath & " " & quoted form of installedSystem with administrator privileges
+	on error
+		-- no admin rights: install into the user's own Applications folder
+		set dest to installedUser
+		do shell script "/bin/mkdir -p " & quoted form of (homeDir & "/Applications")
+		do shell script "/usr/bin/ditto " & quoted form of bundlePath & " " & quoted form of dest
+	end try
+	do shell script "/usr/bin/xattr -dr com.apple.quarantine " & quoted form of dest & " 2>/dev/null; true"
+	do shell script "/usr/bin/open " & quoted form of dest
+end installApp
+
+on menuLoop()
 	repeat
-		set st to getState()
+		set st to my getState()
 		set menuItems to {"Подключить", "Отключить", "Сменить сервер", "Обновить подписку", "Указать ссылку подписки", "Показать HWID", "Статус", "Закрыть"}
-		set sel to choose from list menuItems with title "VLessBar" with prompt ("Статус: " & st) default items {"Подключить"} OK button name "Выполнить" cancel button name "Закрыть" without multiple selections allowed
+		set sel to my pick(menuItems, "Статус: " & st, "Подключить")
 		if sel is false then exit repeat
 		set act to item 1 of sel
 		if act is "Подключить" then
-			doAction("up")
+			my doAction("up")
 		else if act is "Отключить" then
-			doAction("down")
+			my doAction("down")
 		else if act is "Сменить сервер" then
-			changeServer()
+			try
+				my changeServer()
+			end try
 		else if act is "Обновить подписку" then
-			doAction("sub-update")
+			my doAction("sub-update")
 		else if act is "Указать ссылку подписки" then
-			addSubscription()
+			try
+				my addSubscription()
+			end try
 		else if act is "Показать HWID" then
-			showInfo(runEng("hwid"))
+			my notifyInfo(my runEng("hwid"))
 		else if act is "Статус" then
-			showInfo(runEng("status"))
+			my notifyInfo(my runEng("status"))
 		else if act is "Закрыть" then
 			exit repeat
 		end if
 	end repeat
-end run
+end menuLoop
 
 on runEng(cmdStr)
 	try
@@ -85,26 +108,25 @@ on getState()
 end getState
 
 on doAction(cmdStr)
-	set res to runEng(cmdStr)
+	set res to my runEng(cmdStr)
 	if res starts with "ОШИБКА:" then
-		display dialog res with title "VLessBar" buttons {"OK"} default button 1
+		my notifyError(res)
 	else
-		display notification res with title "VLessBar"
+		tell application "System Events" to display notification res with title "VLessBar"
 	end if
 end doAction
 
 on addSubscription()
-	set dlg to display dialog "Вставьте ссылку подписки (https://...):" default answer "" with title "VLessBar" buttons {"Отмена", "OK"} default button 2
+	set dlg to my askText("Вставьте ссылку подписки (https://...):", "")
 	set u to text returned of dlg
 	if u is "" then return
-	set res to runEng("sub-add " & quoted form of u)
-	display dialog res with title "VLessBar" buttons {"OK"} default button 1
+	my notifyInfo(my runEng("sub-add " & quoted form of u))
 end addSubscription
 
 on changeServer()
-	set raw to runEng("gui-servers")
+	set raw to my runEng("gui-servers")
 	if raw starts with "ОШИБКА:" or raw is "" then
-		display dialog "Нет серверов. Сначала обновите подписку." with title "VLessBar" buttons {"OK"} default button 1
+		my notifyInfo("Нет серверов. Сначала обновите подписку.")
 		return
 	end if
 	set names to {}
@@ -124,20 +146,51 @@ on changeServer()
 	end repeat
 	set AppleScript's text item delimiters to ""
 	if (count of names) is 0 then
-		display dialog "Нет серверов." with title "VLessBar" buttons {"OK"} default button 1
+		my notifyInfo("Нет серверов.")
 		return
 	end if
-	set chosen to choose from list names with title "VLessBar" with prompt "Выберите сервер" OK button name "Выбрать" cancel button name "Отмена" without multiple selections allowed
+	set chosen to my pick(names, "Выберите сервер", item 1 of names)
 	if chosen is false then return
 	set chosenName to item 1 of chosen
 	repeat with i from 1 to count of names
 		if item i of names is chosenName then
-			doAction("set " & (item i of idxs))
+			my doAction("set " & (item i of idxs))
 			exit repeat
 		end if
 	end repeat
 end changeServer
 
-on showInfo(txt)
-	display dialog txt with title "VLessBar" buttons {"OK"} default button 1
-end showInfo
+-- === dialog helpers (System Events so dialogs always come to the front) ===
+
+on ask(promptText, btnList, defBtn)
+	tell application "System Events"
+		activate
+		return display dialog promptText with title "VLessBar" buttons btnList default button defBtn
+	end tell
+end ask
+
+on askText(promptText, defaultText)
+	tell application "System Events"
+		activate
+		return display dialog promptText default answer defaultText with title "VLessBar" buttons {"Отмена", "OK"} default button 2
+	end tell
+end askText
+
+on notifyInfo(txt)
+	tell application "System Events"
+		activate
+		display dialog txt with title "VLessBar" buttons {"OK"} default button 1
+	end tell
+end notifyInfo
+
+on notifyError(txt)
+	tell application "System Events"
+		activate
+		display dialog txt with title "VLessBar" buttons {"OK"} default button 1 with icon caution
+	end tell
+end notifyError
+
+on pick(items, promptText, defItem)
+	tell application "System Events" to activate
+	return choose from list items with title "VLessBar" with prompt promptText default items {defItem} OK button name "Выполнить" cancel button name "Закрыть" without multiple selections allowed
+end pick

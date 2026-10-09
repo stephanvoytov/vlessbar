@@ -24,6 +24,9 @@ jobs:
       - name: Test engine
         run: cd engine && go test ./...
 
+      - name: Validate AppleScript UI compiles
+        run: osacompile -o "$RUNNER_TEMP/ui.scpt" app/ui.applescript && echo "UI AppleScript compiles OK"
+
       - name: Build app, zip and dmg
         run: |
           chmod +x build-macos.sh

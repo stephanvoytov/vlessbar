@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,25 +10,65 @@ import (
 
 // launchGUI is called when the engine is started with no arguments (i.e. when
 // the user double-clicks VLessBar.app). It runs the bundled AppleScript UI,
-// passing it the Resources dir and the engine path.
+// passing it the Resources dir, the engine path and the bundle path.
+//
+// Any failure is reported to ~/.vlessbar/gui-error.log and shown on screen, so
+// the app never "does nothing" silently.
 func launchGUI() error {
 	exe, err := os.Executable()
 	if err != nil {
-		return err
+		return reportGUIFailure(fmt.Errorf("cannot locate executable: %w", err))
 	}
 	resDir := filepath.Join(filepath.Dir(exe), "..", "Resources")
 	script := filepath.Join(resDir, "ui.applescript")
 	if _, err := os.Stat(script); err != nil {
-		return fmt.Errorf("gui not available (not running from .app)")
+		return reportGUIFailure(fmt.Errorf("ui.applescript not found at %s (not running from .app?): %w", script, err))
 	}
 	bundle := filepath.Dir(filepath.Dir(filepath.Dir(exe)))
+
 	cmd := exec.Command("osascript", script, resDir, exe, bundle)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Run(); err != nil {
+		return reportGUIFailure(fmt.Errorf("osascript failed: %w\n--- osascript output ---\n%s", err, out.String()))
+	}
+	return nil
 }
 
-// cmdGuiState prints a one-line ASCII status for the AppleScript UI.
+// reportGUIFailure records the error to a log file and tries to show it in a
+// dialog so the user sees what went wrong instead of a dead click.
+func reportGUIFailure(err error) error {
+	msg := err.Error()
+	if dir, e := dataDir(); e == nil {
+		_ = os.WriteFile(filepath.Join(dir, "gui-error.log"), []byte(msg+"\n"), 0o600)
+	}
+	dialogText := "VLessBar не смог открыть интерфейс.\n\n" + msg
+	_ = exec.Command("osascript", "-e",
+		`tell application "System Events" to display dialog `+appleScriptString(dialogText)+
+			` with title "VLessBar" buttons {"OK"} default button 1 with icon caution`).Run()
+	return err
+}
+
+// appleScriptString renders s as an AppleScript string literal.
+func appleScriptString(s string) string {
+	out := make([]rune, 0, len(s)+2)
+	out = append(out, '"')
+	for _, r := range s {
+		switch r {
+		case '\\':
+			out = append(out, '\\', '\\')
+		case '"':
+			out = append(out, '\\', '"')
+		default:
+			out = append(out, r)
+		}
+	}
+	out = append(out, '"')
+	return string(out)
+}
+
+// cmdGuiState prints a one-line status for the AppleScript UI.
 func cmdGuiState() error {
 	s, err := loadState()
 	if err != nil {
