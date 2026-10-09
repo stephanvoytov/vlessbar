@@ -41,7 +41,7 @@ echo "==> building menu bar UI (Swift, 10.13)"
 swiftc -O -target x86_64-apple-macosx10.13 -o "$MACOS/VLessBarMenu" \
 	"$ROOT/macos/VLessBarMenu/main.swift"
 xcrun swift-stdlib-tool --copy --scan-executable "$MACOS/VLessBarMenu" \
-	--platform "$(xcode-select -p)/Platforms/MacOSX.platform" \
+	--platform macosx \
 	--destination "$MACOS" --strip-bitcode
 
 echo "==> assembling bundle"
