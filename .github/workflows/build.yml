@@ -28,20 +28,33 @@ jobs:
         if: always()
         run: |
           set +e
-          echo "=== cat -A lines 55-61 (tabs=^I, eol=$) ==="
-          sed -n '55,61p' app/ui.applescript | cat -A
-          echo "=== full file ==="
-          osacompile -o /tmp/full.scpt app/ui.applescript; echo "full rc=$?"
-          echo "=== prefix 1-46 (run + runMain) ==="
-          sed -n '1,46p' app/ui.applescript > /tmp/a.applescript
-          osacompile -o /tmp/a.scpt /tmp/a.applescript; echo "a rc=$?"
-          echo "=== installApp body (48-60) wrapped in handler ==="
-          { echo "on t(bundlePath, homeDir, installedSystem, installedUser)"; sed -n '48,60p' app/ui.applescript; echo "end t"; } > /tmp/b.applescript
-          cat -n /tmp/b.applescript
-          osacompile -o /tmp/b.scpt /tmp/b.applescript; echo "b rc=$?"
-          echo "=== minimal: quoted form of dest ==="
-          printf 'on t(dest)\n\tdo shell script "/usr/bin/open " & quoted form of dest\nend t\n' > /tmp/c.applescript
-          osacompile -o /tmp/c.scpt /tmp/c.applescript; echo "c rc=$?"
+          SR=app/ui.applescript
+          echo "=== 0 baseline full ==="
+          osacompile -o /tmp/0.scpt "$SR"; echo "0 rc=$?"
+
+          echo "=== 1 stub installApp ==="
+          { sed -n '1,48p' "$SR"; printf 'on installApp(bundlePath, homeDir, installedSystem, installedUser)\nend installApp\n'; sed -n '62,$p' "$SR"; } > /tmp/1.applescript
+          osacompile -o /tmp/1.scpt /tmp/1.applescript; echo "1 rc=$?"
+
+          echo "=== 2 stub menuLoop ==="
+          { sed -n '1,62p' "$SR"; printf 'on menuLoop()\nend menuLoop\n'; sed -n '93,$p' "$SR"; } > /tmp/2.applescript
+          osacompile -o /tmp/2.scpt /tmp/2.applescript; echo "2 rc=$?"
+
+          echo "=== 3 stub run+runMain ==="
+          { sed -n '1,10p' "$SR"; printf 'on run argv\n\tmy runMain("")\nend run\non runMain(bundlePath)\n\tmy menuLoop()\nend runMain\n'; sed -n '48,$p' "$SR"; } > /tmp/3.applescript
+          osacompile -o /tmp/3.scpt /tmp/3.applescript; echo "3 rc=$?"
+
+          echo "=== 4 strip all non-ASCII ==="
+          python3 -c "d=open('$SR',encoding='utf-8').read();open('/tmp/4.applescript','w',encoding='utf-8').write(''.join(c if ord(c)<128 else 'x' for c in d))"
+          osacompile -o /tmp/4.scpt /tmp/4.applescript; echo "4 rc=$?"
+
+          echo "=== 5 run+runMain only + stubs ==="
+          { sed -n '1,47p' "$SR"; printf 'on installApp(a, b, c, d)\nend installApp\non menuLoop()\nend menuLoop\non askButtons(a, b, c)\nend askButtons\non notifyError(a)\nend notifyError\n'; } > /tmp/5.applescript
+          osacompile -o /tmp/5.scpt /tmp/5.applescript; echo "5 rc=$?"
+
+          echo "=== 6 menuLoop only + stubs ==="
+          { printf 'on getState()\nend getState\non pick(a, b, c)\nend pick\non doAction(a)\nend doAction\non changeServer()\nend changeServer\non addSubscription()\nend addSubscription\non notifyInfo(a)\nend notifyInfo\non runEng(a)\nend runEng\n'; sed -n '63,92p' "$SR"; } > /tmp/6.applescript
+          osacompile -o /tmp/6.scpt /tmp/6.applescript; echo "6 rc=$?"
 
       - name: Validate AppleScript UI compiles
         run: osacompile -o "$RUNNER_TEMP/ui.scpt" app/ui.applescript && echo "UI AppleScript compiles OK"
