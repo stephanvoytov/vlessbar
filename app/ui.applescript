@@ -62,30 +62,30 @@ end installApp
 
 on menuLoop()
 	repeat
-		set st to my getState()
+		set stxt to my getState()
 		set menuItems to {"Подключить", "Отключить", "Сменить сервер", "Обновить подписку", "Указать ссылку подписки", "Показать HWID", "Статус", "Закрыть"}
-		set sel to my pick(menuItems, "Статус: " & st, "Подключить")
-		if sel is false then exit repeat
-		set act to item 1 of sel
-		if act is "Подключить" then
+		set selList to my pick(menuItems, "Статус: " & stxt, "Подключить")
+		if selList is false then exit repeat
+		set actionName to item 1 of selList
+		if actionName is "Подключить" then
 			my doAction("up")
-		else if act is "Отключить" then
+		else if actionName is "Отключить" then
 			my doAction("down")
-		else if act is "Сменить сервер" then
+		else if actionName is "Сменить сервер" then
 			try
 				my changeServer()
 			end try
-		else if act is "Обновить подписку" then
+		else if actionName is "Обновить подписку" then
 			my doAction("sub-update")
-		else if act is "Указать ссылку подписки" then
+		else if actionName is "Указать ссылку подписки" then
 			try
 				my addSubscription()
 			end try
-		else if act is "Показать HWID" then
+		else if actionName is "Показать HWID" then
 			my notifyInfo(my runEng("hwid"))
-		else if act is "Статус" then
+		else if actionName is "Статус" then
 			my notifyInfo(my runEng("status"))
-		else if act is "Закрыть" then
+		else if actionName is "Закрыть" then
 			exit repeat
 		end if
 	end repeat
@@ -108,11 +108,11 @@ on getState()
 end getState
 
 on doAction(cmdStr)
-	set res to my runEng(cmdStr)
-	if res starts with "ОШИБКА:" then
-		my notifyError(res)
+	set resTxt to my runEng(cmdStr)
+	if resTxt starts with "ОШИБКА:" then
+		my notifyError(resTxt)
 	else
-		tell application "System Events" to display notification res with title "VLessBar"
+		tell application "System Events" to display notification resTxt with title "VLessBar"
 	end if
 end doAction
 
@@ -124,15 +124,15 @@ on addSubscription()
 end addSubscription
 
 on changeServer()
-	set raw to my runEng("gui-servers")
-	if raw starts with "ОШИБКА:" or raw is "" then
+	set rawTxt to my runEng("gui-servers")
+	if rawTxt starts with "ОШИБКА:" or rawTxt is "" then
 		my notifyInfo("Нет серверов. Сначала обновите подписку.")
 		return
 	end if
 	set names to {}
 	set idxs to {}
 	set AppleScript's text item delimiters to linefeed
-	set theLines to text items of raw
+	set theLines to text items of rawTxt
 	repeat with ln in theLines
 		set s to ln as text
 		if s is not "" then
@@ -190,7 +190,7 @@ on notifyError(txt)
 	end tell
 end notifyError
 
-on pick(items, promptText, defItem)
+on pick(itemList, promptText, defItem)
 	tell application "System Events" to activate
-	return choose from list items with title "VLessBar" with prompt promptText default items {defItem} OK button name "Выполнить" cancel button name "Закрыть" without multiple selections allowed
+	return choose from list itemList with title "VLessBar" with prompt promptText default items {defItem} OK button name "Выполнить" cancel button name "Закрыть" without multiple selections allowed
 end pick
