@@ -59,15 +59,43 @@ func TestParseVlessRejectsNonVless(t *testing.T) {
 
 func TestBuildXrayConfigReality(t *testing.T) {
 	v, _ := ParseVless("vless://u@host:443?type=tcp&security=reality&pbk=K&sid=S&sni=SNI&flow=xtls-rprx-vision")
-	cfg := buildXrayConfig(v)
+	cfg := buildXrayConfig(v, false)
 	b, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 	s := string(b)
-	for _, want := range []string{`"realitySettings"`, `"publicKey":"K"`, `"shortId":"S"`, `"flow":"xtls-rprx-vision"`, `"encryption":"none"`, `"protocol":"socks"`, `"protocol":"http"`} {
+	for _, want := range []string{`"realitySettings"`, `"publicKey":"K"`, `"shortId":"S"`, `"flow":"xtls-rprx-vision"`, `"encryption":"none"`, `"protocol":"socks"`, `"protocol":"http"`, `"listen":"127.0.0.1"`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("config missing %s\n%s", want, s)
+		}
+	}
+}
+
+func TestBuildXrayConfigLAN(t *testing.T) {
+	v, _ := ParseVless("vless://u@host:443?type=tcp&security=reality&pbk=K&sid=S&sni=SNI")
+	b, _ := json.Marshal(buildXrayConfig(v, true))
+	if !strings.Contains(string(b), `"listen":"0.0.0.0"`) {
+		t.Errorf("LAN config should listen on 0.0.0.0\n%s", string(b))
+	}
+	if strings.Contains(string(b), `"listen":"127.0.0.1"`) {
+		t.Errorf("LAN config should not listen on loopback only\n%s", string(b))
+	}
+}
+
+func TestCompareVersions(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want int
+	}{
+		{"0.3.0", "0.2.0", 1},
+		{"v0.2.0", "0.2.0", 0},
+		{"0.2.0", "0.3.0", -1},
+		{"1.0.0", "0.9.9", 1},
+	}
+	for _, c := range cases {
+		if got := compareVersions(c.a, c.b); got != c.want {
+			t.Errorf("compareVersions(%q,%q) = %d, want %d", c.a, c.b, got, c.want)
 		}
 	}
 }

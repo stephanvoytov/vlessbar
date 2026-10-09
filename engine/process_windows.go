@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build windows
 
 package main
 
@@ -9,6 +9,21 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"unsafe"
+)
+
+// Win32 process helpers (stdlib syscall only, no external deps).
+var (
+	kernel32               = syscall.NewLazyDLL("kernel32.dll")
+	procOpenProcess        = kernel32.NewProc("OpenProcess")
+	procGetExitCodeProcess = kernel32.NewProc("GetExitCodeProcess")
+	procCloseHandle        = kernel32.NewProc("CloseHandle")
+)
+
+const (
+	processQueryLimitedInformation = 0x1000
+	stillActive                    = 259
+	createNewProcessGroup          = 0x00000200
 )
 
 // startXray writes the config and launches xray in the background.
@@ -30,7 +45,7 @@ func startXray(v *Vless, allowLAN bool) error {
 		return err
 	}
 	cmd := exec.Command(bin, "run", "-c", cfgPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNewProcessGroup}
 	cmd.Stdout = logf
 	cmd.Stderr = logf
 	if err := cmd.Start(); err != nil {
@@ -38,6 +53,8 @@ func startXray(v *Vless, allowLAN bool) error {
 	}
 	p, _ := pidPath()
 	_ = os.WriteFile(p, []byte(strconv.Itoa(cmd.Process.Pid)), 0o600)
+	// Detach: the child keeps running after this (often short-lived) process exits.
+	go func() { _ = cmd.Wait() }()
 	return nil
 }
 
@@ -55,7 +72,8 @@ func readPid() (int, error) {
 
 func stopXray() {
 	if pid, err := readPid(); err == nil && pid > 0 {
-		_ = syscall.Kill(pid, syscall.SIGTERM)
+		// /T kills the whole process tree, /F forces termination.
+		_ = exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F").Run()
 	}
 	if p, err := pidPath(); err == nil {
 		_ = os.Remove(p)
@@ -67,5 +85,15 @@ func xrayRunning() bool {
 	if err != nil || pid <= 0 {
 		return false
 	}
-	return syscall.Kill(pid, 0) == nil
+	h, _, _ := procOpenProcess.Call(processQueryLimitedInformation, 0, uintptr(pid))
+	if h == 0 {
+		return false
+	}
+	defer procCloseHandle.Call(h)
+	var code uint32
+	r, _, _ := procGetExitCodeProcess.Call(h, uintptr(unsafe.Pointer(&code)))
+	if r == 0 {
+		return false
+	}
+	return code == stillActive
 }

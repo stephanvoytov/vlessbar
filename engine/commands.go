@@ -3,8 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -24,6 +28,9 @@ func cmdHwid() error {
 func cmdSubAdd(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: sub-add <url>")
+	}
+	if strings.HasPrefix(strings.TrimSpace(args[0]), "vless://") {
+		return cmdAdd(args)
 	}
 	s, err := loadState()
 	if err != nil {
@@ -91,8 +98,8 @@ func refreshSubscription(s *State) error {
 			Name: name, URI: link, Address: v.Address, Port: v.Port, Network: v.Network,
 		})
 	}
-	s.Servers = servers
-	if s.Selected >= len(servers) {
+	s.Servers = mergeServers(servers, manualServers(s.Servers))
+	if s.Selected >= len(s.Servers) {
 		s.Selected = 0
 	}
 	if err := saveState(s); err != nil {
@@ -112,6 +119,76 @@ func refreshSubscription(s *State) error {
 		fmt.Println("warning:", s.Warning)
 	}
 	return nil
+}
+
+// cmdAdd appends one or more vless:// share links as manual servers. Manual
+// servers are user-pinned and survive subscription refreshes.
+func cmdAdd(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: add <vless://...>")
+	}
+	s, err := loadState()
+	if err != nil {
+		return err
+	}
+	added := 0
+	for _, raw := range args {
+		raw = strings.TrimSpace(raw)
+		v, err := ParseVless(raw)
+		if err != nil {
+			return err
+		}
+		if hasServerURI(s.Servers, raw) {
+			continue
+		}
+		name := v.Remark
+		if name == "" {
+			name = v.Address + ":" + strconv.Itoa(v.Port)
+		}
+		s.Servers = append(s.Servers, Server{
+			Name: name, URI: raw, Address: v.Address, Port: v.Port,
+			Network: v.Network, Manual: true,
+		})
+		added++
+	}
+	if err := saveState(s); err != nil {
+		return err
+	}
+	fmt.Printf("added: %d (total %d)\n", added, len(s.Servers))
+	return nil
+}
+
+// hasServerURI reports whether a server with the exact URI is already stored.
+func hasServerURI(servers []Server, uri string) bool {
+	for _, srv := range servers {
+		if srv.URI == uri {
+			return true
+		}
+	}
+	return false
+}
+
+// manualServers returns the user-pinned (manually added) servers from servers.
+func manualServers(servers []Server) []Server {
+	var out []Server
+	for _, srv := range servers {
+		if srv.Manual {
+			out = append(out, srv)
+		}
+	}
+	return out
+}
+
+// mergeServers concatenates fetched and manual servers, dropping manual
+// entries whose URI is already present among the fetched ones.
+func mergeServers(fetched, manual []Server) []Server {
+	out := append([]Server{}, fetched...)
+	for _, m := range manual {
+		if !hasServerURI(out, m.URI) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func firstNonEmpty(vals ...string) string {
@@ -170,7 +247,7 @@ func cmdUp() error {
 		return err
 	}
 	stopXray()
-	if err := startXray(v); err != nil {
+	if err := startXray(v, s.AllowLAN); err != nil {
 		return err
 	}
 	if err := proxyOn(); err != nil {
@@ -178,6 +255,157 @@ func cmdUp() error {
 	}
 	fmt.Printf("up: %s (socks 127.0.0.1:%d, http 127.0.0.1:%d)\n",
 		s.Servers[s.Selected].Name, socksPort, httpPort)
+	if s.AllowLAN {
+		fmt.Printf("LAN: другие устройства могут использовать HTTP-прокси %s\n", lanGatewayURL())
+	}
+	return nil
+}
+
+// cmdConn reports public IP (direct), exit IP via proxy if tunnel is up,
+// and ping to selected server.
+func cmdConn() error {
+	lines := []string{}
+
+	// 1) Public IP directly (no proxy, no tunnel)
+	if ip, err := getPublicIP(); err == nil {
+		lines = append(lines, "Ваш IP (напрямую): "+ip)
+	} else {
+		lines = append(lines, "Ваш IP (напрямую): ошибка — "+err.Error())
+	}
+
+	// 2) Exit IP via proxy (only if tunnel is running)
+	if xrayRunning() {
+		if ip, lat, err := getExitIPViaProxy(); err == nil {
+			lines = append(lines, fmt.Sprintf("Exit IP (через туннель): %s (латентность %s)", ip, lat))
+		} else {
+			lines = append(lines, "Exit IP (через туннель): ошибка — "+err.Error())
+		}
+	}
+
+	// 3) Ping selected server (no tunnel needed)
+	if out, err := pingSelectedServer(); err == nil {
+		lines = append(lines, out)
+	} else {
+		lines = append(lines, "Пинг сервера: "+err.Error())
+	}
+
+	fmt.Println(strings.Join(lines, "\n"))
+	return nil
+}
+
+// cmdPing pings the selected server directly (no tunnel required).
+func cmdPing() error {
+	out, err := pingSelectedServer()
+	if err != nil {
+		return err
+	}
+	fmt.Println(out)
+	return nil
+}
+
+// cmdPingThroughTunnel measures latency through the VPN tunnel (HTTP via
+// local proxy). Requires the tunnel to be up.
+func cmdPingThroughTunnel() error {
+	if !xrayRunning() {
+		return fmt.Errorf("туннель не запущен (нажмите Подключить)")
+	}
+	s, _ := loadState()
+	srvName := "(нет сервера)"
+	if s.Selected >= 0 && s.Selected < len(s.Servers) {
+		srvName = s.Servers[s.Selected].Name
+	}
+
+	proxyURL, err := url.Parse("http://127.0.0.1:" + strconv.Itoa(httpPort))
+	if err != nil {
+		return err
+	}
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{
+			Proxy: func(*http.Request) (*url.URL, error) { return proxyURL, nil },
+		},
+	}
+
+	// Warm-up + measure a few times for a stable number.
+	var total time.Duration
+	var n int
+	var lastIP string
+	for i := 0; i < 3; i++ {
+		req, _ := http.NewRequest(http.MethodGet, "https://ipinfo.io/ip", nil)
+		req.Header.Set("User-Agent", "VLessBar/"+version)
+		start := time.Now()
+		resp, err := client.Do(req)
+		if err != nil {
+			if i == 0 {
+				return fmt.Errorf("запрос через туннель не удался: %v", err)
+			}
+			break
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		total += time.Since(start)
+		n++
+		lastIP = strings.TrimSpace(string(body))
+	}
+	if n == 0 {
+		return fmt.Errorf("нет успешных запросов")
+	}
+	avg := (total / time.Duration(n)).Round(time.Millisecond)
+	fmt.Printf("Пинг через туннель: %s (сервер: %s, запросов: %d)\n", avg, srvName, n)
+	if lastIP != "" {
+		fmt.Println("Exit IP:", lastIP)
+	}
+	return nil
+}
+
+// cmdIP prints the current public IP directly (no proxy).
+func cmdIP() error {
+	ip, err := getPublicIP()
+	if err != nil {
+		return err
+	}
+	fmt.Println(ip)
+	return nil
+}
+
+// cmdLan toggles LAN gateway mode (listen on 0.0.0.0 instead of loopback).
+func cmdLan(args []string) error {
+	s, err := loadState()
+	if err != nil {
+		return err
+	}
+	if len(args) == 0 {
+		fmt.Printf("allow_lan=%v\n", s.AllowLAN)
+		if s.AllowLAN {
+			fmt.Println("LAN:", lanGatewayURL())
+		}
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(args[0])) {
+	case "on", "1", "true", "yes":
+		s.AllowLAN = true
+	case "off", "0", "false", "no":
+		s.AllowLAN = false
+	default:
+		return fmt.Errorf("usage: lan on|off")
+	}
+	if err := saveState(s); err != nil {
+		return err
+	}
+	fmt.Printf("allow_lan=%v\n", s.AllowLAN)
+	if s.AllowLAN {
+		fmt.Println("LAN:", lanGatewayURL())
+	}
+	return nil
+}
+
+// cmdCheckUpdate prints whether a newer app build is available.
+func cmdCheckUpdate() error {
+	status, url, ver := checkUpdate()
+	fmt.Println(status)
+	if url != "" {
+		fmt.Printf("version=%s\nurl=%s\n", ver, url)
+	}
 	return nil
 }
 
@@ -203,6 +431,13 @@ func cmdStatus() error {
 		"sub_url":     s.SubURL,
 		"user_info":   s.UserInfo,
 		"last_update": s.LastUpdate,
+		"allow_lan":   s.AllowLAN,
+	}
+	if s.AllowLAN {
+		st["lan_url"] = lanGatewayURL()
+	}
+	if s.AllowLAN {
+		st["lan_url"] = lanGatewayURL()
 	}
 	if s.Selected >= 0 && s.Selected < len(s.Servers) {
 		st["selected_name"] = s.Servers[s.Selected].Name

@@ -6,19 +6,22 @@ import (
 	"path/filepath"
 )
 
-// Server is one parsed share link from the subscription.
+// Server is one parsed share link. Manual servers are added by the user
+// (e.g. a legacy vless:// link) and are kept across subscription refreshes.
 type Server struct {
 	Name    string `json:"name"`
 	URI     string `json:"uri"`
 	Address string `json:"address"`
 	Port    int    `json:"port"`
 	Network string `json:"network"`
+	Manual  bool   `json:"manual,omitempty"`
 }
 
 // State is the persisted client state.
 type State struct {
 	Hwid        string   `json:"hwid"`
 	SubURL      string   `json:"sub_url"`
+	AllowLAN    bool     `json:"allow_lan"`
 	Servers     []Server `json:"servers"`
 	Selected    int      `json:"selected"`
 	LastUpdate  string   `json:"last_update"`

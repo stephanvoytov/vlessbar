@@ -1,5 +1,6 @@
 # build outputs are reproducible (see build-xray.ps1 / make-app.ps1)
 /dist/
+/dist-win/
 /resources/xray
 *.zip
 

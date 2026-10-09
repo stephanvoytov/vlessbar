@@ -22,7 +22,9 @@ func xrayBinary() (string, error) {
 	dir := filepath.Dir(exe)
 	candidates := []string{
 		filepath.Join(dir, "xray"),
+		filepath.Join(dir, "xray.exe"),
 		filepath.Join(dir, "..", "Resources", "xray"),
+		filepath.Join(dir, "..", "Resources", "xray.exe"),
 	}
 	for _, c := range candidates {
 		if _, err := os.Stat(c); err == nil {
@@ -32,9 +34,19 @@ func xrayBinary() (string, error) {
 	return "", fmt.Errorf("xray binary not found near %s", dir)
 }
 
+// listenHost returns the bind address for the local inbounds. With allowLAN
+// enabled the proxies listen on all interfaces so other devices on the local
+// network can route through this machine (a lightweight LAN gateway).
+func listenHost(allowLAN bool) string {
+	if allowLAN {
+		return "0.0.0.0"
+	}
+	return "127.0.0.1"
+}
+
 // buildXrayConfig turns a Vless link into an Xray client config with local
 // SOCKS/HTTP inbounds.
-func buildXrayConfig(v *Vless) map[string]interface{} {
+func buildXrayConfig(v *Vless, allowLAN bool) map[string]interface{} {
 	stream := map[string]interface{}{
 		"network":  v.Network,
 		"security": v.Security,
@@ -91,9 +103,9 @@ func buildXrayConfig(v *Vless) map[string]interface{} {
 	return map[string]interface{}{
 		"log": map[string]interface{}{"loglevel": "warning"},
 		"inbounds": []map[string]interface{}{
-			{"tag": "socks", "listen": "127.0.0.1", "port": socksPort, "protocol": "socks",
+			{"tag": "socks", "listen": listenHost(allowLAN), "port": socksPort, "protocol": "socks",
 				"settings": map[string]interface{}{"udp": true}},
-			{"tag": "http", "listen": "127.0.0.1", "port": httpPort, "protocol": "http"},
+			{"tag": "http", "listen": listenHost(allowLAN), "port": httpPort, "protocol": "http"},
 		},
 		"outbounds": []map[string]interface{}{
 			{
@@ -108,8 +120,8 @@ func buildXrayConfig(v *Vless) map[string]interface{} {
 }
 
 // writeXrayConfig serializes the config for v into dir/config.json.
-func writeXrayConfig(dir string, v *Vless) (string, error) {
-	data, err := json.MarshalIndent(buildXrayConfig(v), "", "  ")
+func writeXrayConfig(dir string, v *Vless, allowLAN bool) (string, error) {
+	data, err := json.MarshalIndent(buildXrayConfig(v, allowLAN), "", "  ")
 	if err != nil {
 		return "", err
 	}
