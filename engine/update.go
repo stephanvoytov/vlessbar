@@ -20,6 +20,23 @@ import (
 
 const releasesAPI = "https://api.github.com/repos/stephanvoytov/vlessbar/releases/latest"
 
+const releasePageURL = "https://github.com/stephanvoytov/vlessbar/releases/latest"
+
+// openURL opens a URL in the default browser (used on macOS instead of
+// replacing a binary inside the .app bundle).
+func openURL(u string) error {
+	var c *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		c = exec.Command("open", u)
+	case "windows":
+		c = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
+	default:
+		c = exec.Command("xdg-open", u)
+	}
+	return c.Start()
+}
+
 type ghRelease struct {
 	TagName string `json:"tag_name"`
 	Assets  []struct {

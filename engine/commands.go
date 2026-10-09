@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -406,6 +407,29 @@ func cmdCheckUpdate() error {
 	if url != "" {
 		fmt.Printf("version=%s\nurl=%s\n", ver, url)
 	}
+	return nil
+}
+
+// cmdUpdate downloads the newer build and schedules a restart (app only).
+func cmdUpdate() error {
+	_, url, ver := checkUpdate()
+	if url == "" {
+		return fmt.Errorf("нет доступного обновления")
+	}
+	if runtime.GOOS != "windows" {
+		// The macOS asset is a zip of the whole .app bundle; swapping a single
+		// binary inside Contents/MacOS would corrupt it. Open the release page
+		// so the user replaces the app the normal way.
+		if err := openURL(releasePageURL); err != nil {
+			return err
+		}
+		fmt.Printf("открыта страница релиза %s — скачайте и замените VLessBar.app\n", ver)
+		return nil
+	}
+	if err := applyUpdate(url); err != nil {
+		return err
+	}
+	fmt.Printf("обновление до %s запущено, приложение закроется\n", ver)
 	return nil
 }
 

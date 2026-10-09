@@ -17,8 +17,15 @@ func cmdGuiState() error {
 	if s.Selected >= 0 && s.Selected < len(s.Servers) {
 		name = s.Servers[s.Selected].Name
 	}
-	fmt.Printf("%s | %s | servers: %d\n", state, name, len(s.Servers))
+	fmt.Printf("%s | %s | servers: %d | lan: %s\n", state, name, len(s.Servers), onOff(s.AllowLAN))
 	return nil
+}
+
+func onOff(b bool) string {
+	if b {
+		return "on"
+	}
+	return "off"
 }
 
 // cmdGuiServers prints "index<TAB>name" lines for the GUI.

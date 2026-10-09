@@ -63,7 +63,10 @@ end installApp
 on menuLoop()
 	repeat
 		set stxt to my getState()
-		set menuItems to {"Подключить", "Отключить", "Сменить сервер", "Обновить подписку", "Указать ссылку подписки", "Показать HWID", "Статус", "Закрыть"}
+		set lanOn to (my runEng("lan") contains "allow_lan=true")
+		set lanLabel to "LAN: выкл - включить"
+		if lanOn then set lanLabel to "LAN: вкл - выключить"
+		set menuItems to {"Подключить", "Отключить", "Сменить сервер", "Обновить подписку", "Указать ссылку подписки", "Мой IP", "Пинг через туннель", lanLabel, "Обновить приложение", "Показать HWID", "Статус", "Закрыть"}
 		set selList to my pick(menuItems, "Статус: " & stxt, "Подключить")
 		if selList is false then exit repeat
 		set actionName to item 1 of selList
@@ -81,6 +84,20 @@ on menuLoop()
 			try
 				my addSubscription()
 			end try
+		else if actionName is "Мой IP" then
+			my notifyInfo(my runEng("conn"))
+		else if actionName is "Пинг через туннель" then
+			my notifyInfo(my runEng("ping-tunnel"))
+		else if actionName is lanLabel then
+			if lanOn then
+				my doAction("lan off")
+			else
+				my doAction("lan on")
+			end if
+		else if actionName is "Обновить приложение" then
+			try
+				my checkUpdate()
+			end try
 		else if actionName is "Показать HWID" then
 			my notifyInfo(my runEng("hwid"))
 		else if actionName is "Статус" then
@@ -90,6 +107,25 @@ on menuLoop()
 		end if
 	end repeat
 end menuLoop
+
+-- Checks GitHub releases and offers to replace the .app (app itself only,
+-- the Xray core is intentionally left pinned for old-OS compatibility).
+on checkUpdate()
+	set resTxt to my runEng("check-update")
+	if resTxt starts with "ОШИБКА" or resTxt starts with "Не удалось" then
+		my notifyError(resTxt)
+		return
+	end if
+	if resTxt contains "url=" then
+		set dlg to my askButtons(resTxt, {"Отмена", "Обновить"}, 1)
+		if button returned of dlg is "Обновить" then
+			my notifyInfo("Скачиваю обновление, приложение перезапустится.")
+			my runEng("update")
+		end if
+	else
+		my notifyInfo(resTxt)
+	end if
+end checkUpdate
 
 on runEng(cmdStr)
 	try

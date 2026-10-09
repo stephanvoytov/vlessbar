@@ -1,11 +1,12 @@
 # VLessBar
 
-A minimal VLESS client for **macOS 10.13 (High Sierra, Intel)** — built as a
-drop-in replacement for the Happ client, with subscription support and
-Happ-compatible HWID reporting.
+A minimal VLESS client for **macOS 10.13 (High Sierra, Intel)** and
+**Windows 7+** — a drop-in replacement for the Happ client, with subscription
+support and Happ-compatible HWID reporting.
 
-> Target: High Sierra x86_64 only. High Sierra cannot run anything built with
-> Go 1.21+, so the whole toolchain is pinned to **Go 1.20**.
+> Target: old systems (High Sierra x86_64, Windows 7). Neither can run anything
+> built with Go 1.21+, so the whole toolchain is pinned to **Go 1.20** and the
+> bundled Xray core is pinned to **v1.8.3**.
 
 ## How it works
 
@@ -111,3 +112,44 @@ Encrypted `happ://crypto` subscriptions are intentionally out of scope — plain
 - **Signing**: without an Apple Developer ID the app is unsigned, so Gatekeeper
   requires a one-time right-click → Open. Signing/notarization needs macOS and
   a paid certificate.
+
+## Windows (7 / 8 / 8.1 / 10 / 11)
+
+`VLessBar.exe` is a native Win32 GUI (stdlib only, no cgo, no Electron).
+Bundled `xray.exe` is Xray-core v1.8.3 so it still runs on Windows 7.
+
+```powershell
+# build the engine (Go 1.20)
+cd engine; $env:GOOS='windows'; $env:GOARCH='amd64'; go build -o ..\dist-win\VLessBar.exe .
+```
+
+`dist-win/` needs `VLessBar.exe` + `xray.exe` next to each other. CI builds
+`VLessBar-windows-x64.zip` on every `v*` tag.
+
+### What the UI does
+
+- **server list** — double-click selects a server; `>` marks the active one
+- **Обновить подписку / Ввести ссылку** — `https://` subscription, manual
+  `vless://` links survive later subscription refreshes
+- **Мой IP** — public IP directly, exit IP through the tunnel, TCP RTT to the server
+- **Пинг** — latency measured through the tunnel (3 requests, averaged)
+- **Подключить/Отключить** — one toggle button that follows the tunnel state
+- **Настройки** — app version, Xray core version, LAN gateway toggle, and app
+  self-update (GitHub releases; replaces only `VLessBar.exe`, never the core)
+
+Status line shows: tunnel state, active server, its address, and your public IP.
+
+### LAN gateway
+
+Settings → "Разрешить LAN" binds the local proxies on `0.0.0.0` instead of
+loopback, so other devices on the network can use `http://<pc-ip>:10809`
+(HTTP) or `<pc-ip>:10808` (SOCKS). Windows Firewall must allow inbound
+connections on those ports.
+
+CLI equivalent: `VLessBar.exe lan on|off`.
+
+### CLI
+
+`version`, `help`, `hwid`, `sub-add <url>`, `add <vless://...>`, `sub-update`,
+`list`, `set <idx>`, `up`, `down`, `lan [on|off]`, `check-update`, `update`,
+`conn`, `ping`, `ping-tunnel`, `ip`, `status`, `gui-state`, `gui-servers`.

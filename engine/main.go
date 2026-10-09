@@ -47,6 +47,8 @@ func dispatch(cmd string, args []string) error {
 		return cmdLan(args)
 	case "check-update":
 		return cmdCheckUpdate()
+	case "update":
+		return cmdUpdate()
 	case "conn", "conn-check":
 		return cmdConn()
 	case "ping":
@@ -81,6 +83,7 @@ usage:
   down                 stop tunnel + clear system proxy
   lan on|off           allow other devices on the LAN to use this proxy
   check-update         check if a newer app build is available
+  update               download and apply a newer app build (app only)
   conn                 проверить IP + пинг сервера (без туннеля)
   ping                 пинг выбранного сервера напрямую
   ping-tunnel          пинг через VPN-туннель (нужен запущенный туннель)
