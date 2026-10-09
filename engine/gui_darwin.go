@@ -28,6 +28,20 @@ func launchGUI() error {
 	}
 	bundle := filepath.Dir(filepath.Dir(filepath.Dir(exe)))
 
+	// Preferred UI: the AppKit menu bar app (VLessBarMenu) shipped next to the
+	// engine. Falls back to the AppleScript UI when it is missing.
+	menuBin := filepath.Join(filepath.Dir(exe), "VLessBarMenu")
+	if _, err := os.Stat(menuBin); err == nil {
+		cmd := exec.Command(menuBin, exe)
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &out
+		if err := cmd.Run(); err != nil {
+			return reportGUIFailure(fmt.Errorf("VLessBarMenu failed: %w\n--- output ---\n%s", err, out.String()))
+		}
+		return nil
+	}
+
 	cmd := exec.Command("osascript", script, resDir, exe, bundle)
 	var out bytes.Buffer
 	cmd.Stdout = &out

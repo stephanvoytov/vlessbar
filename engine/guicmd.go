@@ -39,3 +39,10 @@ func cmdGuiServers() error {
 	}
 	return nil
 }
+
+// cmdVersions prints "app=..." and "core=..." (used by the macOS menu UI).
+func cmdVersions() error {
+	fmt.Println("app=" + version)
+	fmt.Println("core=" + xrayVersion())
+	return nil
+}

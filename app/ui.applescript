@@ -128,8 +128,12 @@ on checkUpdate()
 end checkUpdate
 
 on runEng(cmdStr)
+	-- do shell script defaults to a 120s AppleEvent timeout; long engine
+	-- commands (up, sub-update, update) legitimately take longer.
 	try
-		return do shell script quoted form of engPath & " " & cmdStr
+		with timeout of 600 seconds
+			return do shell script quoted form of engPath & " " & cmdStr
+		end timeout
 	on error errMsg
 		return "ОШИБКА: " & errMsg
 	end try
@@ -137,7 +141,9 @@ end runEng
 
 on getState()
 	try
-		return do shell script quoted form of engPath & " gui-state"
+		with timeout of 60 seconds
+			return do shell script quoted form of engPath & " gui-state"
+		end timeout
 	on error
 		return "нет данных"
 	end try

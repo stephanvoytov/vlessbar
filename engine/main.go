@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-const version = "0.3.0"
+const version = "0.4.0"
 
 func main() {
 	args := os.Args[1:]
@@ -63,6 +63,8 @@ func dispatch(cmd string, args []string) error {
 		return cmdGuiState()
 	case "gui-servers":
 		return cmdGuiServers()
+	case "versions":
+		return cmdVersions()
 	default:
 		return fmt.Errorf("unknown command: %s (try: help)", cmd)
 	}
@@ -88,6 +90,7 @@ usage:
   ping                 пинг выбранного сервера напрямую
   ping-tunnel          пинг через VPN-туннель (нужен запущенный туннель)
   ip                   показать текущий публичный IP
+  versions             print app and Xray core versions
   hwid                 print this device HWID (CLI only)
   status               print status as JSON (CLI only)
   version              print version

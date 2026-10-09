@@ -35,11 +35,23 @@ rm -rf "$DIST"
 mkdir -p "$MACOS" "$RES"
 ( cd "$ROOT/engine" && GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 "$GO" build -trimpath -ldflags "-s -w" -o "$MACOS/VLessBar" . )
 
+echo "==> building menu bar UI (Swift, 10.13)"
+SWIFT_FLAGS=(-O -target x86_64-apple-macosx10.13)
+# Static Swift runtime keeps the binary self-contained on 10.13 (which has no
+# /usr/lib/swift). If the toolchain refuses -static-stdlib, fall back to
+# dynamic + swift-stdlib-tool (embeds the dylibs into the bundle).
+if ! swiftc "${SWIFT_FLAGS[@]}" -static-stdlib -o "$MACOS/VLessBarMenu" "$ROOT/macos/VLessBarMenu/main.swift"; then
+	echo "==> -static-stdlib failed, retrying with embedded dylibs"
+	swiftc "${SWIFT_FLAGS[@]}" -o "$MACOS/VLessBarMenu" "$ROOT/macos/VLessBarMenu/main.swift"
+	xcrun swift-stdlib-tool --copy --scan-executable "$MACOS/VLessBarMenu" \
+		--destination "$MACOS" --strip-bitcode --verbose || true
+fi
+
 echo "==> assembling bundle"
 cp "$ROOT/app/Info.plist" "$CONTENTS/Info.plist"
 cp "$ROOT/app/ui.applescript" "$RES/ui.applescript"
 cp "$XRAY_BIN" "$RES/xray"
-chmod +x "$MACOS/VLessBar" "$RES/xray"
+chmod +x "$MACOS/VLessBar" "$MACOS/VLessBarMenu" "$RES/xray"
 
 echo "==> zip"
 ZIP="$DIST/VLessBar-macos10.13.zip"
