@@ -167,7 +167,7 @@ on askButtons(promptText, btnList, defBtn)
 		activate
 		return display dialog promptText with title "VLessBar" buttons btnList default button defBtn
 	end tell
-end ask
+end askButtons
 
 on askText(promptText, defaultText)
 	tell application "System Events"
