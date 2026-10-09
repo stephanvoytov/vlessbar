@@ -86,6 +86,8 @@ jobs:
             $zip = "$env:TEMP\xray.zip"
             Invoke-WebRequest -Uri 'https://github.com/XTLS/Xray-core/releases/download/v1.8.3/Xray-windows-64.zip' -OutFile $zip
             Expand-Archive $zip -DestinationPath dist-win -Force
+            # The upstream zip ships both xray.exe and wxray.exe (identical).
+            Remove-Item dist-win\wxray.exe -ErrorAction SilentlyContinue
             if (-not (Test-Path 'dist-win\xray.exe')) { throw 'xray.exe not extracted' }
           }
 
