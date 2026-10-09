@@ -56,6 +56,20 @@ The zip is written by `make_zip.py`, which stores Unix permissions
 (`create_system=3` + `external_attr`), so macOS restores the executable bit on
 unpack — **the user never needs `chmod`**.
 
+## Build on macOS (or in CI)
+
+`build-macos.sh` does the whole thing on a Mac — engine + Xray + `.app` + zip +
+`.dmg` — using `ditto`/`hdiutil`, so permissions are native and no fixups are
+needed:
+
+```bash
+GO=/path/to/go1.20 ./build-macos.sh
+```
+
+GitHub Actions (`.github/workflows/build.yml`) runs the same script on a
+`macos-latest` runner, uploads the zip and dmg as artifacts, and publishes them
+as a release on `v*` tags.
+
 ## Install (on the Mac)
 
 1. Unpack `VLessBar-macos10.13.zip` → `VLessBar.app` (exec bits already set).
