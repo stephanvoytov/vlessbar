@@ -28,6 +28,7 @@ type State struct {
 	HwidActive  bool     `json:"hwid_active"`
 	HwidLimit   bool     `json:"hwid_limit"`
 	HwidNotSupp bool     `json:"hwid_not_supported"`
+	Warning     string   `json:"warning"`
 }
 
 func statePath() (string, error) {

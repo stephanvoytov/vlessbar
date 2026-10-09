@@ -62,6 +62,7 @@ func refreshSubscription(s *State) error {
 	s.ProfileURL = res.ProfileURL
 	s.UserInfo = res.UserInfo
 	s.HwidActive = res.HwidActive
+	s.Warning = res.Warning
 	s.LastUpdate = time.Now().Format(time.RFC3339)
 
 	if res.HwidNotSupp {
@@ -72,7 +73,7 @@ func refreshSubscription(s *State) error {
 	if res.HwidLimit {
 		s.HwidLimit = true
 		_ = saveState(s)
-		return fmt.Errorf("device limit reached (x-hwid-max-devices-reached)")
+		return fmt.Errorf("%s", firstNonEmpty(res.Warning, "Достигнут лимит устройств (x-hwid-max-devices-reached)"))
 	}
 	s.HwidNotSupp, s.HwidLimit = false, false
 
@@ -97,6 +98,9 @@ func refreshSubscription(s *State) error {
 	if err := saveState(s); err != nil {
 		return err
 	}
+	if len(servers) == 0 && s.Warning != "" {
+		return fmt.Errorf("%s", s.Warning)
+	}
 	fmt.Printf("updated: %d servers, hwid=%s\n", len(servers), s.Hwid)
 	if s.UserInfo != "" {
 		fmt.Println("userinfo:", s.UserInfo)
@@ -104,7 +108,19 @@ func refreshSubscription(s *State) error {
 	if s.Announce != "" {
 		fmt.Println("announce:", s.Announce)
 	}
+	if s.Warning != "" {
+		fmt.Println("warning:", s.Warning)
+	}
 	return nil
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func cmdList() error {

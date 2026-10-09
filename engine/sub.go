@@ -19,6 +19,7 @@ type SubResult struct {
 	HwidActive  bool
 	HwidLimit   bool
 	HwidNotSupp bool
+	Warning     string
 }
 
 // FetchSubscription performs a Happ-compatible subscription request:
@@ -56,12 +57,24 @@ func FetchSubscription(subURL, hwid string) (*SubResult, error) {
 		HwidLimit:   headerTrue(resp.Header.Get("x-hwid-max-devices-reached")) || headerTrue(resp.Header.Get("x-hwid-limit")),
 		HwidNotSupp: headerTrue(resp.Header.Get("x-hwid-not-supported")),
 	}
-	if res.HwidNotSupp || res.HwidLimit {
+	if res.HwidNotSupp {
+		res.Warning = "Панель не поддерживает HWID (x-hwid-not-supported)."
+		return res, nil
+	}
+	if res.HwidLimit {
+		res.Warning = res.Announce
+		if res.Warning == "" {
+			res.Warning = "Достигнут лимит устройств. Отключите лишнее устройство в личном кабинете, затем обновите подписку."
+		}
 		return res, nil
 	}
 
 	text := decodeMaybeBase64(string(body))
-	res.Links = extractLinks(text)
+	all := extractLinks(text)
+	res.Links = filterLinks(all)
+	if len(res.Links) == 0 && len(all) > 0 {
+		res.Warning = "Панель не вернула рабочих серверов (возможно, достигнут лимит устройств)."
+	}
 	if resp.StatusCode != http.StatusOK && len(res.Links) == 0 {
 		return res, fmt.Errorf("subscription HTTP %d", resp.StatusCode)
 	}
@@ -126,4 +139,25 @@ func extractLinks(text string) []string {
 		}
 	}
 	return links
+}
+
+// filterLinks drops non-usable entries such as the "device limit" placeholder
+// some panels return (a zero UUID pointing at 0.0.0.0:1).
+func filterLinks(links []string) []string {
+	var out []string
+	for _, l := range links {
+		v, err := ParseVless(l)
+		if err != nil {
+			continue
+		}
+		if v.Address == "" || v.Address == "0.0.0.0" || v.Port <= 1 || isZeroUUID(v.UUID) {
+			continue
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
+func isZeroUUID(u string) bool {
+	return strings.ReplaceAll(u, "-", "") == strings.Repeat("0", 32)
 }

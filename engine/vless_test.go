@@ -96,6 +96,18 @@ func TestExtractLinks(t *testing.T) {
 	}
 }
 
+func TestFilterLinksDropsPlaceholders(t *testing.T) {
+	links := []string{
+		"vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1?encryption=none&type=tcp&security=none#limit",
+		"vless://11111111-2222-3333-4444-555555555555@real.example.com:443?security=tls&type=tcp#ok",
+		"not-a-link",
+	}
+	got := filterLinks(links)
+	if len(got) != 1 || !strings.Contains(got[0], "real.example.com") {
+		t.Fatalf("filter failed: %v", got)
+	}
+}
+
 func TestHwidFormat(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		h := newHwid()
