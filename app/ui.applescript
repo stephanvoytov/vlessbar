@@ -33,7 +33,7 @@ on runMain(bundlePath)
 		set marker to homeDir & "/.vlessbar/.noinstall"
 		set noflag to do shell script "test -e " & quoted form of marker & " && echo 1 || echo 0"
 		if noflag is "0" then
-			set dlg to my ask("Установить VLessBar в «Программы»?", {"Позже", "Установить"}, 2)
+			set dlg to my askButtons("Установить VLessBar в «Программы»?", {"Позже", "Установить"}, 2)
 			if button returned of dlg is "Установить" then
 				my installApp(bundlePath, homeDir, installedSystem, installedUser)
 				return
@@ -162,7 +162,7 @@ end changeServer
 
 -- === dialog helpers (System Events so dialogs always come to the front) ===
 
-on ask(promptText, btnList, defBtn)
+on askButtons(promptText, btnList, defBtn)
 	tell application "System Events"
 		activate
 		return display dialog promptText with title "VLessBar" buttons btnList default button defBtn
